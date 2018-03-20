@@ -15,25 +15,18 @@ extern "C" {
 #include "azure_c_shared_utility/tlsio.h"
 #include "azure_c_shared_utility/umock_c_prod.h"
 
-typedef struct TLS_DIRECT_INSTANCE_TAG* TLS_DIRECT_HANDLE;
+typedef struct TLS_DIRECT_CONTEXT_TAG* TLS_DIRECT_CONTEXT_HANDLE;
 
-typedef struct TLS_IO_INSTANCE_TAG
+typedef struct TLS_DIRECT_INSTANCE_TAG
 {
-    ON_BYTES_RECEIVED on_bytes_received;
-    ON_IO_ERROR on_io_error;
-    ON_IO_OPEN_COMPLETE on_open_complete;
-    void* on_bytes_received_context;
-    void* on_io_error_context;
-    void* on_open_complete_context;
-    TLSIO_STATE tlsio_state;
-    CFStringRef hostname;
+    const char* hostname;
     uint16_t port;
-    bool no_messages_yet_sent;
-    CFReadStreamRef sockRead;
-    CFWriteStreamRef sockWrite;
-    SINGLYLINKEDLIST_HANDLE pending_transmission_list;
+    TLS_DIRECT_CONTEXT_HANDLE context;
     TLSIO_OPTIONS options;
-} TLS_IO_INSTANCE;
+} TLS_DIRECT_INSTANCE;
+
+typedef struct TLS_DIRECT_INSTANCE_TAG* TLS_DIRECT_INSTANCE_HANDLE;
+
 
 typedef enum TLS_ASYNC_RESULT_TAG
 {
@@ -42,9 +35,24 @@ typedef enum TLS_ASYNC_RESULT_TAG
     TLS_ASYNC_RESULT_SUCCESS = 1
 } TLS_ASYNC_RESULT;
 
+#define TLS_ASYNC_RW_RESULT_FAILURE -1
+
 
 // Returns either a TLS_DIRECT_HANDLE or NULL
-TLS_DIRECT_HANDLE tls_direct_create();
+TLS_DIRECT_CONTEXT_HANDLE tls_direct_create();
+
+TLS_ASYNC_RESULT tls_direct_open(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance);
+
+// Returns 0 for waiting, positive for chars read, or TLS_ASYNC_RW_RESULT_FAILURE
+int tls_direct_read(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, char* buffer, uint32_t buffer_size);
+
+// Returns 0 for waiting, positive for chars writted, or TLS_ASYNC_RW_RESULT_FAILURE
+int tls_direct_write(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, const char* buffer, uint32_t count);
+
+void tls_direct_close(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance);
+
+void tls_direct_destroy(TLS_DIRECT_CONTEXT_HANDLE context);
+
 
 
 
