@@ -35,19 +35,10 @@ typedef struct
 typedef enum TLSIO_STATE_TAG
 {
     TLSIO_STATE_CLOSED,
-    TLSIO_STATE_OPENING_WAITING_DNS,
-    TLSIO_STATE_OPENING_WAITING_SOCKET,
-    TLSIO_STATE_OPENING_WAITING_SSL,
+    TLSIO_STATE_OPENING,
     TLSIO_STATE_OPEN,
     TLSIO_STATE_ERROR,
 } TLSIO_STATE;
-
-bool is_an_opening_state(TLSIO_STATE state)
-{
-    return state == TLSIO_STATE_OPENING_WAITING_DNS ||
-        state == TLSIO_STATE_OPENING_WAITING_SOCKET ||
-        state == TLSIO_STATE_OPENING_WAITING_SSL;
-}
 
 typedef struct TLS_DIRECT_INTERNAL_TAG
 {
@@ -364,7 +355,7 @@ static int tlsio_close_async(CONCRETE_IO_HANDLE tls_io, ON_IO_CLOSE_COMPLETE on_
                 LogInfo("tlsio_close has been called when in neither TLSIO_STATE_OPEN nor TLSIO_STATE_ERROR.");
             }
 
-            if (is_an_opening_state(tls_io_instance->tlsio_state))
+            if (tls_io_instance->tlsio_state == TLSIO_STATE_OPENING)
             {
                 /* Codes_SRS_TLSIO_30_057: [ On success, if the adapter is in TLSIO_STATE_EXT_OPENING, it shall call on_io_open_complete with the on_io_open_complete_context supplied in tlsio_open_async and IO_OPEN_CANCELLED. This callback shall be made before changing the internal state of the adapter. ]*/
                 tls_io_instance->on_open_complete(tls_io_instance->on_open_complete_context, IO_OPEN_CANCELLED);
