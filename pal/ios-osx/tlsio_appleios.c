@@ -60,7 +60,7 @@ bool is_an_opening_state(TLSIO_STATE state)
         state == TLSIO_STATE_OPENING_WAITING_SSL;
 }
 
-typedef struct TLS_IO_INSTANCE_TAG
+typedef struct TLS_DIRECT_INTERNAL_TAG
 {
     ON_BYTES_RECEIVED on_bytes_received;
     ON_IO_ERROR on_io_error;
@@ -76,7 +76,7 @@ typedef struct TLS_IO_INSTANCE_TAG
     CFWriteStreamRef sockWrite;
     SINGLYLINKEDLIST_HANDLE pending_transmission_list;
     TLSIO_OPTIONS options;
-} TLS_IO_INSTANCE;
+} TLS_DIRECT_INTERNAL;
 
 /* Codes_SRS_TLSIO_30_005: [ The phrase "enter TLSIO_STATE_EXT_ERROR" means the adapter shall call the on_io_error function and pass the on_io_error_context that was supplied in tlsio_open_async. ]*/
 static void enter_tlsio_error_state(TLS_IO_INSTANCE* tls_io_instance)
