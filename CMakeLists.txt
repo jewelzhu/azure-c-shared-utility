@@ -293,7 +293,8 @@ if(${use_cyclonessl} AND WIN32)
 endif()
 if(${use_applessl})
     set(source_c_files ${source_c_files}
-        ./pal/ios-osx/tlsio_appleios.c
+        ./pal/ios-osx/tlsio_direct.c
+        ./pal/ios-osx/tls_direct_appleios.c
         ./pal/tlsio_options.c
     )
     include_directories(./pal/ios-osx/)
@@ -412,7 +413,7 @@ if(${use_cyclonessl} AND WIN32)
 endif()
 if(${use_applessl})
     set(source_h_files ${source_h_files}
-        ./pal/ios-osx/tlsio_appleios.h
+        ./pal/ios-osx/tls_direct.h
     )
     include_directories(./pal/ios-osx/)
 endif()

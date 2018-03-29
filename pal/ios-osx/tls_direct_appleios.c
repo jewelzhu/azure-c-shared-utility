@@ -13,48 +13,60 @@
 #include "azure_c_shared_utility/agenttime.h"
 #include "azure_c_shared_utility/crt_abstractions.h"
 #include "azure_c_shared_utility/tlsio_options.h"
-#include "azure_c_shared_utility/tlsio_direct.h"
+#include "tls_direct.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreFoundation/CFError.h>
 #include <CFNetwork/CFSocketStream.h>
 #include <Security/SecureTransport.h>
 
-typedef struct TLS_DIRECT_INSTANCE_TAG
+typedef struct TLS_DIRECT_CONTEXT_TAG
 {
     CFReadStreamRef sockRead;
     CFWriteStreamRef sockWrite;
-} TLS_DIRECT_INSTANCE;
+} TLS_DIRECT_CONTEXT;
 
 // No error checking needed here - handled by the caller
 TLS_DIRECT_CONTEXT_HANDLE tls_direct_create()
 {
-    TLS_DIRECT_CONTEXT_HANDLE result = malloc(sizeof(TLS_IO_INSTANCE));
+    TLS_DIRECT_CONTEXT_HANDLE result = malloc(sizeof(TLS_DIRECT_CONTEXT));
     if (result != NULL)
     {
         result->sockRead = NULL;
         result->sockWrite = NULL;
     }
+    return result;
 }
 
 
 TLS_ASYNC_RESULT tls_direct_open(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance)
 {
     TLS_ASYNC_RESULT result;
+    TLS_DIRECT_CONTEXT* context = (TLS_DIRECT_CONTEXT*)tls_direct_instance->context;
+    
+    CFStringRef hostname;
     // This will pretty much only fail if we run out of memory
-    CFStreamCreatePairWithSocketToHost(NULL, tls_io_instance->hostname, tls_io_instance->port, &tls_io_instance->sockRead, &tls_io_instance->sockWrite);
-    if (tls_io_instance->sockRead != NULL && tls_io_instance->sockWrite != NULL)
+    if (NULL == (hostname = CFStringCreateWithCString(NULL, tls_direct_instance->hostname, kCFStringEncodingUTF8)))
     {
-        if (CFReadStreamSetProperty(tls_io_instance->sockRead, kCFStreamPropertySSLSettings, kCFStreamSocketSecurityLevelNegotiatedSSL))
+        /* Codes_SRS_TLSIO_30_011: [ If any resource allocation fails, tlsio_create shall return NULL. ]*/
+        LogError("CFStringCreateWithCString failed");
+        tlsio_appleios_destroy(result);
+        result = NULL;
+    }
+    
+    CFStreamCreatePairWithSocketToHost(NULL, tls_direct_instance->hostname, tls_direct_instance->port, &context->sockRead, &context->sockWrite);
+    if (context->sockRead != NULL && context->sockWrite != NULL)
+    {
+        if (CFReadStreamSetProperty(tls_direct_instance->sockRead, kCFStreamPropertySSLSettings, kCFStreamSocketSecurityLevelNegotiatedSSL))
         {
-            if (CFReadStreamOpen(tls_io_instance->sockRead) && CFWriteStreamOpen(tls_io_instance->sockWrite))
+            if (CFReadStreamOpen(tls_direct_instance->sockRead) && CFWriteStreamOpen(tls_direct_instance->sockWrite))
             {
                 result = TLS_ASYNC_RESULT_SUCCESS;
             }
             else
             {
-                CFErrorRef readError = CFReadStreamCopyError(tls_io_instance->sockRead);
-                CFErrorRef writeError = CFWriteStreamCopyError(tls_io_instance->sockWrite);
+                CFErrorRef readError = CFReadStreamCopyError(tls_direct_instance->sockRead);
+                CFErrorRef writeError = CFWriteStreamCopyError(tls_direct_instance->sockWrite);
 
                 LogInfo("Error opening streams - read error=%d;write error=%d", CFErrorGetCode(readError), CFErrorGetCode(writeError));
                 result = TLS_ASYNC_RESULT_FAILURE;
@@ -79,9 +91,9 @@ TLS_ASYNC_RESULT tls_direct_open(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance)
 int tls_direct_read(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, char* buffer, uint32_t buffer_size)
 {
     int rcv_bytes;
-    if (CFReadStreamHasBytesAvailable(tls_io_instance->context->sockRead))
+    if (CFReadStreamHasBytesAvailable(tls_direct_instance->context->sockRead))
     {
-        rcv_bytes = CFReadStreamRead(tls_io_instance->vsockRead, buffer, (CFIndex)(sizeof(buffer)));
+        rcv_bytes = CFReadStreamRead(tls_direct_instance->vsockRead, buffer, (CFIndex)(sizeof(buffer)));
     }
     else
     {
@@ -95,16 +107,16 @@ int tls_direct_write(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, const char*
 {
     int result;
     // Check to see if the socket will not block
-    if (CFWriteStreamCanAcceptBytes(tls_io_instance->sockWrite))
+    if (CFWriteStreamCanAcceptBytes(tls_direct_instance->sockWrite))
     {
-        result = CFWriteStreamWrite(tls_io_instance->sockWrite, buffer, pending_message->unsent_size);
+        result = CFWriteStreamWrite(tls_direct_instance->sockWrite, buffer, pending_message->unsent_size);
         if (result > 0)
         {
         }
         else
         {
             // The write returned non-success. It may be busy, or it may be broken
-            CFErrorRef write_error = CFWriteStreamCopyError(tls_io_instance->sockWrite);
+            CFErrorRef write_error = CFWriteStreamCopyError(tls_direct_instance->sockWrite);
             if (CFErrorGetCode(write_error) != errSSLWouldBlock)
             {
                 LogInfo("Hard error from CFWriteStreamWrite: %d", CFErrorGetCode(write_error));
@@ -139,7 +151,7 @@ void tls_direct_close(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance)
 
     if (tls_direct_instance->context->sockWrite != NULL)
     {
-        CFWriteStreamClose(tls_io_instance->context->sockWrite);
+        CFWriteStreamClose(tls_direct_instance->context->sockWrite);
         CFRelease(tls_direct_instance->context->sockWrite);
         tls_direct_instance->context->sockWrite = NULL;
     }
