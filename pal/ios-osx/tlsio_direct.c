@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+#include <limits.h>
 #include "azure_c_shared_utility/xio.h"
 #include "azure_c_shared_utility/gballoc.h"
 #include "azure_c_shared_utility/xlogging.h"
@@ -24,6 +25,17 @@ typedef struct
     ON_SEND_COMPLETE on_send_complete;
     void* callback_context;
 } PENDING_TRANSMISSION;
+
+#ifdef __APPLE__
+#define USE_NO_CERT_PARAM_HEADER
+#endif
+
+#ifdef USE_NO_CERT_PARAM_HEADER
+const char WEBSOCKET_HEADER_START[] = "GET /$iothub/websocket";
+const char WEBSOCKET_HEADER_NO_CERT_PARAM[] = "?iothub-no-client-cert=true";
+const size_t WEBSOCKET_HEADER_START_SIZE = sizeof(WEBSOCKET_HEADER_START) - 1;
+const size_t WEBSOCKET_HEADER_NO_CERT_PARAM_SIZE = sizeof(WEBSOCKET_HEADER_NO_CERT_PARAM) - 1;
+#endif // USE_NO_CERT_PARAM_HEADER
 
 #define MAX_VALID_PORT 0xffff
 
@@ -49,7 +61,9 @@ typedef struct TLS_DIRECT_INTERNAL_TAG
     void* on_io_error_context;
     void* on_open_complete_context;
     TLSIO_STATE tlsio_state;
+#ifdef USE_NO_CERT_PARAM_HEADER
     bool no_messages_yet_sent;
+#endif // USE_NO_CERT_PARAM_HEADER
     SINGLYLINKEDLIST_HANDLE pending_transmission_list;
     TLS_DIRECT_INSTANCE tls_direct;
 } TLS_DIRECT_INTERNAL;
@@ -299,7 +313,9 @@ static int tlsio_open_async(CONCRETE_IO_HANDLE tls_io,
                     }
                     else
                     {
+#ifdef USE_NO_CERT_PARAM_HEADER
                         tls_io_instance->no_messages_yet_sent = true;
+#endif // USE_NO_CERT_PARAM_HEADER
                         /* Codes_SRS_TLSIO_30_034: [ The tlsio_open shall store the provided on_bytes_received, on_bytes_received_context, on_io_error, on_io_error_context, on_io_open_complete, and on_io_open_complete_context parameters for later use as specified and tested per other line entries in this document. ]*/
                         tls_io_instance->on_bytes_received = on_bytes_received;
                         tls_io_instance->on_bytes_received_context = on_bytes_received_context;
@@ -389,6 +405,7 @@ static void dowork_read(TLS_DIRECT_INTERNAL* tls_io_instance)
         rcv_bytes = 1;
         while (rcv_bytes > 0)
         {
+            // We are guaranteeing that buffer is smaller than MAX_INT
             rcv_bytes = tls_direct_read(&tls_io_instance->tls_direct, buffer, (uint32_t)sizeof(buffer));
             
             if (rcv_bytes > 0)
@@ -433,7 +450,7 @@ static void dowork_send(TLS_DIRECT_INTERNAL* tls_io_instance)
                 // This empty else compiles to nothing but helps readability
             }
         }
-        else
+        else if (write_result < 0)
         {
             // This is an unexpected error, and we need to bail out. Probably lost internet connection.
             LogInfo("Unrecoverable error from tls_direct_write");
@@ -532,7 +549,7 @@ static int tlsio_setoption(CONCRETE_IO_HANDLE tls_io, const char* optionName, co
 static int tlsio_send_async(CONCRETE_IO_HANDLE tls_io, const void* buffer, size_t size, ON_SEND_COMPLETE on_send_complete, void* callback_context)
 {
     int result;
-    if (on_send_complete == NULL || tls_io == NULL || buffer == NULL || size == 0 || on_send_complete == NULL)
+    if (on_send_complete == NULL || tls_io == NULL || buffer == NULL || size == 0 || size >= INT_MAX || on_send_complete == NULL)
     {
         /* Codes_SRS_TLSIO_30_062: [ If the on_send_complete is NULL, tlsio_compact_send shall log the error and return FAILURE. ]*/
         result = __FAILURE__;
@@ -559,6 +576,7 @@ static int tlsio_send_async(CONCRETE_IO_HANDLE tls_io, const void* buffer, size_
             }
             else
             {
+#ifdef USE_NO_CERT_PARAM_HEADER
                 // For AMQP and MQTT over websockets, the interaction of the IoT Hub and the
                 // Apple TLS requires hacking the websocket upgrade header with a
                 // "iothub-no-client-cert=true" parameter to avoid a TLS hang.
@@ -572,6 +590,7 @@ static int tlsio_send_async(CONCRETE_IO_HANDLE tls_io, const void* buffer, size_
                         size += WEBSOCKET_HEADER_NO_CERT_PARAM_SIZE;
                     }
                 }
+#endif // USE_NO_CERT_PARAM_HEADER
 
                 /* Codes_SRS_TLSIO_30_063: [ The tlsio_compact_send shall enqueue for transmission the on_send_complete, the callback_context, the size, and the contents of buffer. ]*/
                 if ((pending_transmission->bytes = (unsigned char*)malloc(size)) == NULL)
@@ -587,6 +606,7 @@ static int tlsio_send_async(CONCRETE_IO_HANDLE tls_io, const void* buffer, size_
                     pending_transmission->unsent_size = size;
                     pending_transmission->on_send_complete = on_send_complete;
                     pending_transmission->callback_context = callback_context;
+#ifdef USE_NO_CERT_PARAM_HEADER
                     if (add_no_cert_url_parameter)
                     {
                         // Insert the WEBSOCKET_HEADER_NO_CERT_PARAM after the url
@@ -596,8 +616,11 @@ static int tlsio_send_async(CONCRETE_IO_HANDLE tls_io, const void* buffer, size_
                     }
                     else
                     {
+#endif //USE_NO_CERT_PARAM_HEADER
                         (void)memcpy(pending_transmission->bytes, buffer, size);
+#ifdef USE_NO_CERT_PARAM_HEADER
                     }
+#endif // USE_NO_CERT_PARAM_HEADER
 
                     if (singlylinkedlist_add(tls_io_instance->pending_transmission_list, pending_transmission) == NULL)
                     {
@@ -634,7 +657,7 @@ static OPTIONHANDLER_HANDLE tlsio_retrieveoptions(CONCRETE_IO_HANDLE tls_io)
     }
     else
     {
-        result = tlsio_options_retrieve_options(&tls_io_instance->options, tlsio_setoption);
+        result = tlsio_options_retrieve_options(&tls_io_instance->tls_direct.options, tlsio_setoption);
     }
     return result;
 }
@@ -653,7 +676,7 @@ static const IO_INTERFACE_DESCRIPTION tlsio_interface_description =
 };
 
 /* Codes_SRS_TLSIO_30_001: [ The tlsio_compact shall implement and export all the Concrete functions in the VTable IO_INTERFACE_DESCRIPTION defined in the xio.h. ]*/
-const IO_INTERFACE_DESCRIPTION* tlsio_get_interface_description(void)
+const IO_INTERFACE_DESCRIPTION* tlsio_direct_get_interface_description(void)
 {
     return &tlsio_interface_description;
 }

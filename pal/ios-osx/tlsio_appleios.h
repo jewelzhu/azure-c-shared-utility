@@ -21,7 +21,7 @@ extern "C" {
 *
 * @return	The tlsio interface (IO_INTERFACE_DESCRIPTION).
 */
-MOCKABLE_FUNCTION(, const IO_INTERFACE_DESCRIPTION*, tlsio_appleios_get_interface_description);
+MOCKABLE_FUNCTION(, const IO_INTERFACE_DESCRIPTION*, tlsio_direct_get_interface_description);
 
 #ifdef __cplusplus
 }

@@ -46,10 +46,10 @@ TLS_DIRECT_CONTEXT_HANDLE tls_direct_create(void);
 TLS_ASYNC_RESULT tls_direct_open(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance);
 
 // Returns 0 for waiting, positive for chars read, or TLS_ASYNC_RW_RESULT_FAILURE
-int tls_direct_read(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, unsigned char* buffer, uint32_t buffer_size);
+int tls_direct_read(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, uint8_t* buffer, uint32_t buffer_size);
 
 // Returns 0 for waiting, positive for chars writted, or TLS_ASYNC_RW_RESULT_FAILURE
-int tls_direct_write(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, const unsigned char* buffer, uint32_t count);
+int tls_direct_write(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance, const uint8_t* buffer, uint32_t count);
 
 void tls_direct_close(TLS_DIRECT_INSTANCE_HANDLE tls_direct_instance);
 
