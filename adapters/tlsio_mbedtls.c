@@ -41,6 +41,9 @@
 // DEPRECATED: debug functions do not belong in the tree.
 #define MBED_TLS_DEBUG_ENABLE
 
+static const char* OPTION_X509_CERT = "x509certificate";
+static const char* OPTION_X509_PRIVATE_KEY = "x509privatekey";
+
 typedef enum TLSIO_STATE_ENUM_TAG
 {
     TLSIO_STATE_NOT_OPEN,
@@ -73,7 +76,11 @@ typedef struct TLS_IO_INSTANCE_TAG
     mbedtls_ssl_config         config;
     mbedtls_x509_crt           trusted_certificates_parsed;
     mbedtls_ssl_session        ssn;
+    mbedtls_x509_crt           client_certificates_parsed;
+    mbedtls_pk_context         pk;
     char*                      trusted_certificates;
+    char*                      x509certificate;
+    char*                      x509privatekey;
 } TLS_IO_INSTANCE;
 
 static const IO_INTERFACE_DESCRIPTION tlsio_mbedtls_interface_description =
@@ -320,6 +327,8 @@ static void mbedtls_init(void *instance, const char *host) {
     mbedtls_ssl_session_init(&result->ssn);
     mbedtls_ssl_config_init(&result->config);
     mbedtls_x509_crt_init(&result->trusted_certificates_parsed);
+    mbedtls_x509_crt_init(&result->client_certificates_parsed);
+    mbedtls_pk_init( &result->pk);
     mbedtls_entropy_add_source(&result->entropy, tlsio_entropy_poll, NULL, 128, 0);
     mbedtls_ctr_drbg_seed(&result->ctr_drbg, mbedtls_entropy_func, &result->entropy, (const unsigned char *)pers, strlen(pers));
     mbedtls_ssl_config_defaults(&result->config, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
@@ -394,6 +403,8 @@ CONCRETE_IO_HANDLE tlsio_mbedtls_create(void* io_create_parameters)
                 result->on_io_error_context = NULL;
 
                 result->trusted_certificates = NULL;
+                result->x509certificate = NULL;
+                result->x509privatekey = NULL;
 
                 result->socket_io = xio_create(underlying_io_interface, io_interface_parameters);
                 if (result->socket_io == NULL)
@@ -431,6 +442,8 @@ void tlsio_mbedtls_destroy(CONCRETE_IO_HANDLE tls_io)
         mbedtls_ssl_free(&tls_io_instance->ssl);
         mbedtls_ssl_config_free(&tls_io_instance->config);
         mbedtls_x509_crt_free(&tls_io_instance->trusted_certificates_parsed);
+        mbedtls_x509_crt_free(&tls_io_instance->client_certificates_parsed);
+        mbedtls_pk_free(&tls_io_instance->pk);
         mbedtls_ctr_drbg_free(&tls_io_instance->ctr_drbg);
         mbedtls_entropy_free(&tls_io_instance->entropy);
 
@@ -445,6 +458,14 @@ void tlsio_mbedtls_destroy(CONCRETE_IO_HANDLE tls_io)
         if (tls_io_instance->trusted_certificates != NULL)
         {
             free(tls_io_instance->trusted_certificates);
+        }
+        if(tls_io_instance->x509certificate != NULL)
+        {
+            free(tls_io_instance->x509certificate);
+        }
+        if(tls_io_instance->x509privatekey != NULL)
+        {
+            free(tls_io_instance->x509privatekey);
         }
         free(tls_io);
     }
@@ -738,6 +759,100 @@ int tlsio_mbedtls_setoption(CONCRETE_IO_HANDLE tls_io, const char* optionName, c
                 {
                     mbedtls_ssl_conf_ca_chain(&tls_io_instance->config, &tls_io_instance->trusted_certificates_parsed, NULL);
                     result = 0;
+                }
+            }
+        }
+        else if (strcmp(OPTION_X509_CERT, optionName) == 0)
+        {
+            if (tls_io_instance->x509certificate != NULL)
+            {
+                LogError("unable to set x509 options more than once");
+                result = __FAILURE__;
+            }
+            else
+            {
+                /*let's make a copy of this option*/
+                if (mallocAndStrcpy_s((char**)&tls_io_instance->x509certificate, value) != 0)
+                {
+                    LogError("unable to mallocAndStrcpy_s");
+                    result = __FAILURE__;
+                }
+                else
+                {
+                    int parse_result = mbedtls_x509_crt_parse(&tls_io_instance->client_certificates_parsed, (const unsigned char *)value, (int)(strlen(value) + 1));
+                    if (parse_result != 0)
+                    {
+                        LogInfo("Malformed pem certificate");
+                        result = __FAILURE__;
+                    }
+                    else
+                    {
+                        if (tls_io_instance->x509privatekey != NULL && tls_io_instance->x509certificate != NULL)
+                        {
+                            int set_key_result = mbedtls_ssl_conf_own_cert(&tls_io_instance->config, &tls_io_instance->client_certificates_parsed, &tls_io_instance->pk);
+
+                            if (set_key_result != 0)
+                            {
+                                LogInfo("Fail to set private key and certificate");
+                                result = __FAILURE__;
+                            }
+                            else
+                            {
+                                result = 0;
+                            }
+                        }
+                        else
+                        {
+                            result = 0;
+                        }
+                    }
+                }
+            }
+        }
+        else if (strcmp(OPTION_X509_PRIVATE_KEY, optionName) == 0)
+        {
+            if (tls_io_instance->x509privatekey != NULL)
+            {
+                LogError("unable to set more than once private key options");
+                result = __FAILURE__;
+            }
+            else
+            {
+                /*let's make a copy of this option*/
+                if (mallocAndStrcpy_s((char**)&tls_io_instance->x509privatekey, value) != 0)
+                {
+                    LogError("unable to mallocAndStrcpy_s");
+                    result = __FAILURE__;
+                }
+                else
+                {
+                    int parse_result = mbedtls_pk_parse_key(&tls_io_instance->pk, (const unsigned char *)value, (int)(strlen(value) + 1), NULL, 0);
+                    if (parse_result != 0)
+                    {
+                        LogInfo("Malformed pem private key");
+                        result = __FAILURE__;
+                    }
+                    else
+                    {
+                        if (tls_io_instance->x509privatekey != NULL && tls_io_instance->x509certificate != NULL)
+                        {
+                            int set_key_result = mbedtls_ssl_conf_own_cert(&tls_io_instance->config, &tls_io_instance->client_certificates_parsed, &tls_io_instance->pk);
+
+                            if (set_key_result != 0)
+                            {
+                                LogInfo("Fail to set private key and certificate");
+                                result = __FAILURE__;
+                            }
+                            else
+                            {
+                                result = 0;
+                            }
+                        }
+                        else
+                        {
+                            result = 0;
+                        }
+                    }
                 }
             }
         }
