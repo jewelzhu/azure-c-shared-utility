@@ -636,6 +636,10 @@ int socketio_open(CONCRETE_IO_HANDLE socket_io, ON_IO_OPEN_COMPLETE on_io_open_c
                 }
                 else
                 {
+					struct sockaddr_in *sock_in;
+					
+					sock_in = (struct sockaddr_in*)addrInfo->ai_addr;
+					printf("get ip success: %s\n", inet_ntoa(sock_in->sin_addr));
                     int flags;
                     if ((-1 == (flags = fcntl(socket_io_instance->socket, F_GETFL, 0))) ||
                         (fcntl(socket_io_instance->socket, F_SETFL, flags | O_NONBLOCK) == -1))

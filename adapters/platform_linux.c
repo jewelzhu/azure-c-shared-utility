@@ -13,6 +13,9 @@
 #if USE_WOLFSSL
 #include "azure_c_shared_utility/tlsio_wolfssl.h"
 #endif
+#if USE_MBED_TLS
+#include "azure_c_shared_utility/tlsio_mbedtls.h"
+#endif
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,6 +38,8 @@ const IO_INTERFACE_DESCRIPTION* platform_get_default_tlsio(void)
     return tlsio_cyclonessl_get_interface_description();
 #elif USE_WOLFSSL
     return tlsio_wolfssl_get_interface_description();
+#elif USE_MBED_TLS
+    return tlsio_mbedtls_get_interface_description();
 #else
     return tlsio_openssl_get_interface_description();
 #endif
