@@ -5,7 +5,7 @@
 #define TLSIO_MBEDTLS_H
 
 // DEPRECATED: tls_config will be removed from the tree.
-#include "azure_c_shared_utility/tls_config.h"
+//#include "azure_c_shared_utility/tls_config.h"
 
 // DEPRECATED: the USE_MBED_TLS #define is deprecated.
 #ifdef USE_MBED_TLS
