@@ -245,6 +245,16 @@ static int on_io_recv(void *context, unsigned char *buf, size_t sz)
         {
             break;
         }
+        else if (tls_io_instance->tlsio_state == TLSIO_STATE_NOT_OPEN ||
+                    tls_io_instance->tlsio_state == TLSIO_STATE_CLOSING ||
+                    tls_io_instance->tlsio_state == TLSIO_STATE_ERROR)
+        {
+            // Underlying io error, exit.
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        }
+        else
+        {
+        }
     }
 
     result = tls_io_instance->socket_io_read_byte_count;
